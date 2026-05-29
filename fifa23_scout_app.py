@@ -48,6 +48,7 @@ st.markdown("""
     .badge-overval  { background: #3d1515; color: #f85149; border: 1px solid #f85149; border-radius: 6px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; }
     .badge-hidden   { background: #1a2c4a; color: #58a6ff; border: 1px solid #58a6ff; border-radius: 6px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; }
     .badge-efficient{ background: #2d2208; color: #d29922; border: 1px solid #d29922; border-radius: 6px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; }
+    .badge-young    { background: #1a1a4a; color: #a371f7; border: 1px solid #a371f7; border-radius: 6px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; }
     .dataframe { background-color: #161b22 !important; }
     .stSlider label, .stMultiSelect label, .stSelectbox label { color: #8b949e !important; font-size: 0.82rem !important; }
     hr { border-color: #30363d; }
@@ -63,7 +64,7 @@ def load_data():
     df = pd.read_csv("fifa23_limpio.csv")
 
     numeric_cols = [
-        "overall", "value_eur", "wage_eur", "rpp",
+        "overall", "value_eur", "wage_eur", "rpp", "age",
         "pace", "shooting", "passing", "dribbling", "defending", "physic"
     ]
     for col in numeric_cols:
@@ -84,6 +85,23 @@ def load_data():
 
     df["rpp_value_ratio"] = (df["rpp"] / (df["value_eur"] / 1_000_000 + 0.001)).round(2)
 
+    # Categoría de edad
+    def categorize_age(age):
+        if pd.isna(age):
+            return "Desconocido"
+        elif age <= 21:
+            return "Joven (≤21)"
+        elif age <= 25:
+            return "Promesa (22-25)"
+        elif age <= 29:
+            return "Prime (26-29)"
+        elif age <= 32:
+            return "Experimentado (30-32)"
+        else:
+            return "Veterano (33+)"
+
+    df["age_category"] = df["age"].apply(categorize_age)
+
     return df
 
 
@@ -102,6 +120,11 @@ with st.sidebar:
 
     nations = sorted(df_raw["nationality_name"].dropna().unique())
     sel_nations = st.multiselect("Nacionalidad", nations, default=[], placeholder="Todas las nacionalidades")
+
+    # Filtro de edad
+    min_age = int(df_raw["age"].min())
+    max_age = int(df_raw["age"].max())
+    age_range = st.slider("Rango de edad", min_age, max_age, (min_age, max_age))
 
     min_val = int(df_raw["value_eur"].min())
     max_val = int(df_raw["value_eur"].max())
@@ -128,8 +151,9 @@ if sel_nations:
     df = df[df["nationality_name"].isin(sel_nations)]
 
 df = df[
-    (df["value_eur"] >= val_range[0]) & (df["value_eur"] <= val_range[1]) &
-    (df["rpp"]       >= rpp_range[0]) & (df["rpp"]       <= rpp_range[1]) &
+    (df["age"]       >= age_range[0])   & (df["age"]       <= age_range[1]) &
+    (df["value_eur"] >= val_range[0])   & (df["value_eur"] <= val_range[1]) &
+    (df["rpp"]       >= rpp_range[0])   & (df["rpp"]       <= rpp_range[1]) &
     (df["overall"]   >= overall_range[0]) & (df["overall"] <= overall_range[1])
 ]
 
@@ -150,14 +174,15 @@ st.markdown("---")
 # ─────────────────────────────────────────────
 st.markdown("<div class='section-title'>📊 Dashboard General</div>", unsafe_allow_html=True)
 
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 kpis = [
     (col1, len(df), "Jugadores"),
     (col2, round(df["overall"].mean(), 1) if not df.empty else 0, "Overall Promedio"),
     (col3, round(df["rpp"].mean(), 1) if not df.empty else 0, "RPP Promedio"),
-    (col4, f"€{df['value_eur'].median()/1e6:.1f}M" if not df.empty else "€0", "Valor Mediano"),
-    (col5, f"€{df['wage_eur'].median()/1e3:.0f}K" if not df.empty else "€0", "Salario Mediano / semana"),
+    (col4, round(df["age"].mean(), 1) if not df.empty else 0, "Edad Promedio"),
+    (col5, f"€{df['value_eur'].median()/1e6:.1f}M" if not df.empty else "€0", "Valor Mediano"),
+    (col6, f"€{df['wage_eur'].median()/1e3:.0f}K" if not df.empty else "€0", "Salario Mediano/sem"),
 ]
 
 for col, val, label in kpis:
@@ -167,21 +192,42 @@ for col, val, label in kpis:
             unsafe_allow_html=True
         )
 
-# Distribución por posición — color categórico (sin color_continuous_scale)
 if not df.empty:
-    pos_dist = df["player_positions"].value_counts().reset_index()
-    pos_dist.columns = ["Posición", "Cantidad"]
-    fig_pos = px.bar(
-        pos_dist, x="Posición", y="Cantidad",
-        color="Posición",
-        template="plotly_dark",
-        title="Distribución por Posición"
-    )
-    fig_pos.update_layout(
-        plot_bgcolor="#0d1117", paper_bgcolor="#0d1117",
-        showlegend=False, height=350
-    )
-    st.plotly_chart(fig_pos, use_container_width=True)
+    col_d1, col_d2 = st.columns(2)
+
+    with col_d1:
+        pos_dist = df["player_positions"].value_counts().reset_index()
+        pos_dist.columns = ["Posición", "Cantidad"]
+        fig_pos = px.bar(
+            pos_dist, x="Posición", y="Cantidad",
+            color="Posición",
+            template="plotly_dark",
+            title="Distribución por Posición"
+        )
+        fig_pos.update_layout(
+            plot_bgcolor="#0d1117", paper_bgcolor="#0d1117",
+            showlegend=False, height=350
+        )
+        st.plotly_chart(fig_pos, use_container_width=True)
+
+    with col_d2:
+        age_dist = df["age_category"].value_counts().reset_index()
+        age_dist.columns = ["Categoría", "Cantidad"]
+        order = ["Joven (≤21)", "Promesa (22-25)", "Prime (26-29)", "Experimentado (30-32)", "Veterano (33+)"]
+        age_dist["Categoría"] = pd.Categorical(age_dist["Categoría"], categories=order, ordered=True)
+        age_dist = age_dist.sort_values("Categoría")
+        fig_age = px.bar(
+            age_dist, x="Categoría", y="Cantidad",
+            color="Categoría",
+            color_discrete_sequence=["#a371f7", "#58a6ff", "#3fb950", "#d29922", "#f85149"],
+            template="plotly_dark",
+            title="Distribución por Categoría de Edad"
+        )
+        fig_age.update_layout(
+            plot_bgcolor="#0d1117", paper_bgcolor="#0d1117",
+            showlegend=False, height=350
+        )
+        st.plotly_chart(fig_age, use_container_width=True)
 
 
 # ─────────────────────────────────────────────
@@ -190,11 +236,12 @@ if not df.empty:
 st.markdown("---")
 st.markdown("<div class='section-title'>🔥 Análisis de Oportunidades de Fichaje</div>", unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "💎 Infravalorados",
     "📉 Sobrevalorados",
     "🌟 Talento Oculto",
     "💰 Eficiencia Salarial",
+    "🔮 Jóvenes Promesas",
     "🏆 Top por Posición"
 ])
 
@@ -215,11 +262,11 @@ with tab1:
             fig_uv = px.scatter(
                 underval, x="value_eur", y="rpp",
                 hover_name="long_name",
-                hover_data={"overall": True, "player_positions": True, "opportunity_score": True},
-                color="player_positions",
+                hover_data={"overall": True, "age": True, "player_positions": True, "opportunity_score": True},
+                color="age_category",
                 size="overall", size_max=18,
                 template="plotly_dark",
-                labels={"value_eur": "Valor (€)", "rpp": "RPP"},
+                labels={"value_eur": "Valor (€)", "rpp": "RPP", "age_category": "Edad"},
                 title=f"💎 {len(underval)} Jugadores Infravalorados"
             )
             fig_uv.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=400)
@@ -227,13 +274,12 @@ with tab1:
 
         with col_b:
             st.markdown(f"**{len(underval)} jugadores encontrados**")
-            cols_show = ["long_name", "player_positions", "overall", "rpp", "value_eur", "opportunity_score"]
+            cols_show = ["long_name", "player_positions", "age", "overall", "rpp", "value_eur", "opportunity_score"]
             cols_show = [c for c in cols_show if c in underval.columns]
             st.dataframe(
                 underval[cols_show].head(20).rename(columns={
-                    "long_name": "Jugador", "player_positions": "Pos",
-                    "overall": "OVR", "value_eur": "Valor €",
-                    "opportunity_score": "Score"
+                    "long_name": "Jugador", "player_positions": "Pos", "age": "Edad",
+                    "overall": "OVR", "value_eur": "Valor €", "opportunity_score": "Score"
                 }),
                 hide_index=True, use_container_width=True
             )
@@ -255,11 +301,11 @@ with tab2:
             fig_ov = px.scatter(
                 overval, x="overall", y="rpp",
                 hover_name="long_name",
-                hover_data={"value_eur": True, "player_positions": True},
-                color="player_positions",
+                hover_data={"value_eur": True, "age": True, "player_positions": True},
+                color="age_category",
                 size="value_eur", size_max=18,
                 template="plotly_dark",
-                labels={"overall": "Overall", "rpp": "RPP"},
+                labels={"overall": "Overall", "rpp": "RPP", "age_category": "Edad"},
                 title=f"📉 {len(overval)} Jugadores Sobrevalorados"
             )
             fig_ov.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=400)
@@ -267,11 +313,11 @@ with tab2:
 
         with col_b:
             st.markdown(f"**{len(overval)} jugadores encontrados**")
-            cols_show = ["long_name", "player_positions", "overall", "rpp", "value_eur"]
+            cols_show = ["long_name", "player_positions", "age", "overall", "rpp", "value_eur"]
             cols_show = [c for c in cols_show if c in overval.columns]
             st.dataframe(
                 overval[cols_show].head(20).rename(columns={
-                    "long_name": "Jugador", "player_positions": "Pos",
+                    "long_name": "Jugador", "player_positions": "Pos", "age": "Edad",
                     "overall": "OVR", "value_eur": "Valor €"
                 }),
                 hide_index=True, use_container_width=True
@@ -294,11 +340,11 @@ with tab3:
             fig_hid = px.scatter(
                 hidden, x="overall", y="rpp",
                 hover_name="long_name",
-                hover_data={"value_eur": True, "player_positions": True},
-                color="player_positions",
+                hover_data={"value_eur": True, "age": True, "player_positions": True},
+                color="age_category",
                 size="rpp", size_max=16,
                 template="plotly_dark",
-                labels={"overall": "Overall", "rpp": "RPP"},
+                labels={"overall": "Overall", "rpp": "RPP", "age_category": "Edad"},
                 title=f"🌟 {len(hidden)} Talentos Ocultos"
             )
             fig_hid.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=400)
@@ -306,11 +352,11 @@ with tab3:
 
         with col_b:
             st.markdown(f"**{len(hidden)} jugadores encontrados**")
-            cols_show = ["long_name", "player_positions", "overall", "rpp", "value_eur"]
+            cols_show = ["long_name", "player_positions", "age", "overall", "rpp", "value_eur"]
             cols_show = [c for c in cols_show if c in hidden.columns]
             st.dataframe(
                 hidden[cols_show].head(20).rename(columns={
-                    "long_name": "Jugador", "player_positions": "Pos",
+                    "long_name": "Jugador", "player_positions": "Pos", "age": "Edad",
                     "overall": "OVR", "value_eur": "Valor €"
                 }),
                 hide_index=True, use_container_width=True
@@ -334,11 +380,11 @@ with tab4:
             fig_eff = px.scatter(
                 efficient, x="wage_eur", y="rpp",
                 hover_name="long_name",
-                hover_data={"overall": True, "player_positions": True, "rpp_wage_ratio": True},
-                color="player_positions",
+                hover_data={"overall": True, "age": True, "player_positions": True, "rpp_wage_ratio": True},
+                color="age_category",
                 size="rpp", size_max=16,
                 template="plotly_dark",
-                labels={"wage_eur": "Salario (€/sem)", "rpp": "RPP"},
+                labels={"wage_eur": "Salario (€/sem)", "rpp": "RPP", "age_category": "Edad"},
                 title=f"💰 {len(efficient)} Jugadores Eficientes en Salario"
             )
             fig_eff.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=400)
@@ -346,20 +392,79 @@ with tab4:
 
         with col_b:
             st.markdown(f"**{len(efficient)} jugadores encontrados**")
-            cols_show = ["long_name", "player_positions", "overall", "rpp", "wage_eur", "rpp_wage_ratio"]
+            cols_show = ["long_name", "player_positions", "age", "overall", "rpp", "wage_eur", "rpp_wage_ratio"]
             cols_show = [c for c in cols_show if c in efficient.columns]
             st.dataframe(
                 efficient[cols_show].head(20).rename(columns={
-                    "long_name": "Jugador", "player_positions": "Pos",
-                    "overall": "OVR", "wage_eur": "Salario €",
-                    "rpp_wage_ratio": "RPP/Sal."
+                    "long_name": "Jugador", "player_positions": "Pos", "age": "Edad",
+                    "overall": "OVR", "wage_eur": "Salario €", "rpp_wage_ratio": "RPP/Sal."
                 }),
                 hide_index=True, use_container_width=True
             )
 
 
-# ── TAB 5: TOP POR POSICIÓN ───────────────────────────────────────────────────
+# ── TAB 5: JÓVENES PROMESAS ───────────────────────────────────────────────────
 with tab5:
+    st.markdown("**Criterio:** Edad ≤ 23 · RPP > percentil 60 en su posición · Valor < percentil 60")
+
+    if not df.empty:
+        pos_p60_rpp = df.groupby("player_positions")["rpp"].transform(lambda x: x.quantile(0.60))
+        p60_val     = df["value_eur"].quantile(0.60)
+
+        young = df[
+            (df["age"] <= 23) &
+            (df["rpp"] >= pos_p60_rpp) &
+            (df["value_eur"] <= p60_val)
+        ].copy()
+        young = young.sort_values(["rpp", "age"], ascending=[False, True])
+
+        col_a, col_b = st.columns([2, 1])
+        with col_a:
+            fig_young = px.scatter(
+                young, x="age", y="rpp",
+                hover_name="long_name",
+                hover_data={"overall": True, "value_eur": True, "player_positions": True},
+                color="player_positions",
+                size="overall", size_max=18,
+                template="plotly_dark",
+                labels={"age": "Edad", "rpp": "RPP", "player_positions": "Posición"},
+                title=f"🔮 {len(young)} Jóvenes Promesas (≤23 años)"
+            )
+            fig_young.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=400)
+            st.plotly_chart(fig_young, use_container_width=True)
+
+        with col_b:
+            st.markdown(f"**{len(young)} jugadores encontrados**")
+            cols_show = ["long_name", "player_positions", "age", "overall", "rpp", "value_eur"]
+            cols_show = [c for c in cols_show if c in young.columns]
+            st.dataframe(
+                young[cols_show].head(20).rename(columns={
+                    "long_name": "Jugador", "player_positions": "Pos", "age": "Edad",
+                    "overall": "OVR", "value_eur": "Valor €"
+                }),
+                hide_index=True, use_container_width=True
+            )
+
+        # Gráfico adicional: RPP promedio por edad
+        st.markdown("**RPP promedio según edad**")
+        rpp_by_age = df.groupby("age")["rpp"].mean().reset_index()
+        rpp_by_age.columns = ["Edad", "RPP Promedio"]
+        fig_rpp_age = px.line(
+            rpp_by_age, x="Edad", y="RPP Promedio",
+            template="plotly_dark",
+            title="Evolución del RPP Promedio por Edad",
+            markers=True
+        )
+        fig_rpp_age.add_vline(x=23, line_dash="dot", line_color="#a371f7",
+                              annotation_text="Corte joven (23)", annotation_position="top right")
+        fig_rpp_age.add_vline(x=29, line_dash="dot", line_color="#3fb950",
+                              annotation_text="Peak (29)", annotation_position="top right")
+        fig_rpp_age.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
+        st.plotly_chart(fig_rpp_age, use_container_width=True)
+
+
+# ── TAB 6: TOP POR POSICIÓN ───────────────────────────────────────────────────
+with tab6:
     st.markdown("**Top 10 jugadores por RPP en cada posición**")
 
     if not df.empty:
@@ -396,11 +501,11 @@ with tab5:
                 st.plotly_chart(fig_top, use_container_width=True)
 
             with col_b:
-                cols_show = ["long_name", "overall", "rpp", "value_eur", "wage_eur", "nationality_name"]
+                cols_show = ["long_name", "age", "overall", "rpp", "value_eur", "wage_eur", "nationality_name"]
                 cols_show = [c for c in cols_show if c in top10.columns]
                 st.dataframe(
                     top10[cols_show].rename(columns={
-                        "long_name": "Jugador", "overall": "OVR",
+                        "long_name": "Jugador", "age": "Edad", "overall": "OVR",
                         "value_eur": "Valor €", "wage_eur": "Salario €",
                         "nationality_name": "País"
                     }),
@@ -428,6 +533,18 @@ if not df.empty:
         st.plotly_chart(fig_hist, use_container_width=True)
 
     with col_v2:
+        fig_hist_age = px.histogram(
+            df, x="age", nbins=30,
+            color_discrete_sequence=["#a371f7"],
+            template="plotly_dark",
+            title="Distribución de Edad"
+        )
+        fig_hist_age.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
+        st.plotly_chart(fig_hist_age, use_container_width=True)
+
+    col_v3, col_v4 = st.columns(2)
+
+    with col_v3:
         fig_sc1 = px.scatter(
             df.sample(min(2000, len(df)), random_state=42),
             x="value_eur", y="rpp",
@@ -441,10 +558,24 @@ if not df.empty:
         fig_sc1.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
         st.plotly_chart(fig_sc1, use_container_width=True)
 
-    col_v3, col_v4 = st.columns(2)
-
-    with col_v3:
+    with col_v4:
         fig_sc2 = px.scatter(
+            df.sample(min(2000, len(df)), random_state=42),
+            x="age", y="rpp",
+            hover_name="long_name",
+            color="player_positions",
+            opacity=0.7,
+            template="plotly_dark",
+            labels={"age": "Edad", "rpp": "RPP"},
+            title="Edad vs RPP"
+        )
+        fig_sc2.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
+        st.plotly_chart(fig_sc2, use_container_width=True)
+
+    col_v5, col_v6 = st.columns(2)
+
+    with col_v5:
+        fig_sc3 = px.scatter(
             df.sample(min(2000, len(df)), random_state=42),
             x="overall", y="rpp",
             hover_name="long_name",
@@ -454,16 +585,16 @@ if not df.empty:
             labels={"overall": "Overall", "rpp": "RPP"},
             title="Overall vs RPP"
         )
-        fig_sc2.add_shape(
+        fig_sc3.add_shape(
             type="line",
             x0=df["overall"].min(), x1=df["overall"].max(),
             y0=df["overall"].min(), y1=df["overall"].max(),
             line=dict(color="white", dash="dot", width=1)
         )
-        fig_sc2.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
-        st.plotly_chart(fig_sc2, use_container_width=True)
+        fig_sc3.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
+        st.plotly_chart(fig_sc3, use_container_width=True)
 
-    with col_v4:
+    with col_v6:
         top_pos_for_box = df["player_positions"].value_counts().head(12).index.tolist()
         df_box = df[df["player_positions"].isin(top_pos_for_box)]
         fig_box = px.box(
@@ -489,13 +620,13 @@ st.markdown("<div class='section-title'>📋 Tabla de Jugadores Filtrados</div>"
 if not df.empty:
     sort_col = st.selectbox(
         "Ordenar por",
-        ["rpp", "overall", "value_eur", "wage_eur", "opportunity_score"],
+        ["rpp", "overall", "age", "value_eur", "wage_eur", "opportunity_score"],
         index=0
     )
     sort_asc = st.checkbox("Orden ascendente", value=False)
 
     display_cols = [
-        "long_name", "player_positions", "nationality_name",
+        "long_name", "player_positions", "nationality_name", "age",
         "overall", "rpp", "value_eur", "wage_eur",
         "opportunity_score", "rpp_value_ratio",
         "pace", "shooting", "passing", "dribbling", "defending", "physic"
@@ -511,7 +642,7 @@ if not df.empty:
     st.dataframe(
         df_display.rename(columns={
             "long_name": "Jugador", "player_positions": "Posición",
-            "nationality_name": "País", "overall": "OVR",
+            "nationality_name": "País", "age": "Edad", "overall": "OVR",
             "value_eur": "Valor €", "wage_eur": "Salario €/sem",
             "opportunity_score": "Oport. Score", "rpp_value_ratio": "RPP/Valor"
         }),
@@ -535,7 +666,6 @@ if not df.empty:
         .head(20)
     )
 
-    # Bar chart usando go.Bar para evitar problemas con color_continuous_scale
     steals_sorted = steals.sort_values("opportunity_score")
     fig_rank = go.Figure(go.Bar(
         x=steals_sorted["opportunity_score"],
@@ -546,14 +676,15 @@ if not df.empty:
             colorscale="Viridis",
             showscale=False
         ),
-        customdata=steals_sorted[["player_positions", "overall", "rpp", "value_eur"]].values,
+        customdata=steals_sorted[["player_positions", "age", "overall", "rpp", "value_eur"]].values,
         hovertemplate=(
             "<b>%{y}</b><br>"
             "Score: %{x:.1f}<br>"
             "Posición: %{customdata[0]}<br>"
-            "Overall: %{customdata[1]}<br>"
-            "RPP: %{customdata[2]:.1f}<br>"
-            "Valor: €%{customdata[3]:,.0f}<extra></extra>"
+            "Edad: %{customdata[1]}<br>"
+            "Overall: %{customdata[2]}<br>"
+            "RPP: %{customdata[3]:.1f}<br>"
+            "Valor: €%{customdata[4]:,.0f}<extra></extra>"
         )
     ))
     fig_rank.update_layout(
@@ -573,12 +704,14 @@ if not df.empty:
     for i, (_, row) in enumerate(top3.iterrows()):
         with card_cols[i]:
             val_m = row["value_eur"] / 1_000_000 if pd.notna(row["value_eur"]) else 0
+            age_val = int(row["age"]) if pd.notna(row["age"]) else "?"
             st.markdown(
                 f"""
                 <div class='metric-card' style='text-align:left;'>
                     <span class='badge-steal'>⭐ GANGA</span><br><br>
                     <b style='font-size:1.1rem;color:#f0f6fc;'>{row['long_name']}</b><br>
-                    <span style='color:#8b949e;'>Posición: <b style='color:#58a6ff;'>{row['player_positions']}</b></span><br><br>
+                    <span style='color:#8b949e;'>Posición: <b style='color:#58a6ff;'>{row['player_positions']}</b></span>&nbsp;
+                    <span style='color:#8b949e;'>Edad: <b style='color:#a371f7;'>{age_val}</b></span><br><br>
                     <span style='color:#8b949e;'>Overall: </span><b>{int(row['overall'])}</b>&nbsp;&nbsp;
                     <span style='color:#8b949e;'>RPP: </span><b>{row['rpp']:.1f}</b><br>
                     <span style='color:#8b949e;'>Valor: </span><b style='color:#3fb950;'>€{val_m:.1f}M</b><br>
