@@ -202,9 +202,9 @@ if not df.empty:
     pos_dist = df["player_positions"].value_counts().reset_index()
     pos_dist.columns = ["Posición", "Cantidad"]
     fig_pos = px.bar(
-        pos_dist, x="Posición", y="Cantidad",
-        color="Cantidad", color_continuous_scale="Blues",
-        template="plotly_dark", title="Distribución por Posición"
+    pos_dist, x="Posición", y="Cantidad",
+    color="Posición",
+    template="plotly_dark", title="Distribución por Posición"
     )
     fig_pos.update_layout(
         plot_bgcolor="#0d1117", paper_bgcolor="#0d1117",
