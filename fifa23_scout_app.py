@@ -20,7 +20,7 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-# ESTILOS CSS PERSONALIZADOS
+# ESTILOS CSS
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -50,6 +50,9 @@ st.markdown("""
     .badge-efficient{ background: #2d2208; color: #d29922; border: 1px solid #d29922; border-radius: 6px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; }
     .badge-young    { background: #1a1a4a; color: #a371f7; border: 1px solid #a371f7; border-radius: 6px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; }
     .dataframe { background-color: #161b22 !important; }
+    /* Color de sliders: azul dashboard en lugar de rojo */
+    .stSlider [data-baseweb="slider"] [data-testid="stThumbValue"] { color: #58a6ff !important; }
+    .stSlider [data-baseweb="slider"] > div > div > div { background: #58a6ff !important; }
     .stSlider label, .stMultiSelect label, .stSelectbox label { color: #8b949e !important; font-size: 0.82rem !important; }
     hr { border-color: #30363d; }
 </style>
@@ -85,7 +88,6 @@ def load_data():
 
     df["rpp_value_ratio"] = (df["rpp"] / (df["value_eur"] / 1_000_000 + 0.001)).round(2)
 
-    # Categoría de edad
     def categorize_age(age):
         if pd.isna(age):
             return "Desconocido"
@@ -107,6 +109,16 @@ def load_data():
 
 df_raw = load_data()
 
+# Helper para formatear valores con separador de miles/millones
+def fmt_eur(val, decimals=1):
+    if pd.isna(val):
+        return "€0"
+    if val >= 1_000_000:
+        return f"€{val/1_000_000:,.{decimals}f}M".replace(",", "X").replace(".", ",").replace("X", ".")
+    elif val >= 1_000:
+        return f"€{val/1_000:,.{decimals}f}K".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"€{val:,.0f}"
+
 
 # ─────────────────────────────────────────────
 # SIDEBAR — FILTROS INTERACTIVOS
@@ -114,6 +126,8 @@ df_raw = load_data()
 with st.sidebar:
     st.markdown("## ⚽ FIFA 23 Scout")
     st.markdown("---")
+    # ENCABEZADO DE FILTROS
+    st.markdown("### Filtros globales")
 
     positions = sorted(df_raw["player_positions"].dropna().unique())
     sel_positions = st.multiselect("Posición", positions, default=[], placeholder="Todas las posiciones")
@@ -121,7 +135,6 @@ with st.sidebar:
     nations = sorted(df_raw["nationality_name"].dropna().unique())
     sel_nations = st.multiselect("Nacionalidad", nations, default=[], placeholder="Todas las nacionalidades")
 
-    # Filtro de edad
     min_age = int(df_raw["age"].min())
     max_age = int(df_raw["age"].max())
     age_range = st.slider("Rango de edad", min_age, max_age, (min_age, max_age))
@@ -151,10 +164,10 @@ if sel_nations:
     df = df[df["nationality_name"].isin(sel_nations)]
 
 df = df[
-    (df["age"]       >= age_range[0])   & (df["age"]       <= age_range[1]) &
-    (df["value_eur"] >= val_range[0])   & (df["value_eur"] <= val_range[1]) &
-    (df["rpp"]       >= rpp_range[0])   & (df["rpp"]       <= rpp_range[1]) &
-    (df["overall"]   >= overall_range[0]) & (df["overall"] <= overall_range[1])
+    (df["age"]       >= age_range[0])    & (df["age"]       <= age_range[1]) &
+    (df["value_eur"] >= val_range[0])    & (df["value_eur"] <= val_range[1]) &
+    (df["rpp"]       >= rpp_range[0])    & (df["rpp"]       <= rpp_range[1]) &
+    (df["overall"]   >= overall_range[0]) & (df["overall"]  <= overall_range[1])
 ]
 
 
@@ -176,13 +189,16 @@ st.markdown("<div class='section-title'>📊 Dashboard General</div>", unsafe_al
 
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 
+valor_mediano_fmt = fmt_eur(df["value_eur"].median()) if not df.empty else "€0"
+salario_mediano_fmt = fmt_eur(df["wage_eur"].median()) if not df.empty else "€0"
+
 kpis = [
-    (col1, len(df), "Jugadores"),
+    (col1, f"{len(df):,}".replace(",", "."), "Jugadores"),
     (col2, round(df["overall"].mean(), 1) if not df.empty else 0, "Overall Promedio"),
     (col3, round(df["rpp"].mean(), 1) if not df.empty else 0, "RPP Promedio"),
     (col4, round(df["age"].mean(), 1) if not df.empty else 0, "Edad Promedio"),
-    (col5, f"€{df['value_eur'].median()/1e6:.1f}M" if not df.empty else "€0", "Valor Mediano"),
-    (col6, f"€{df['wage_eur'].median()/1e3:.0f}K" if not df.empty else "€0", "Salario Mediano/sem"),
+    (col5, valor_mediano_fmt, "Valor Mediano"),
+    (col6, salario_mediano_fmt, "Salario Mediano/sem"),
 ]
 
 for col, val, label in kpis:
@@ -200,10 +216,10 @@ if not df.empty:
         pos_dist.columns = ["Posición", "Cantidad"]
         fig_pos = px.bar(
             pos_dist, x="Posición", y="Cantidad",
-            color="Posición",
             template="plotly_dark",
             title="Distribución por Posición"
         )
+        fig_pos.update_traces(marker_color="#58a6ff")
         fig_pos.update_layout(
             plot_bgcolor="#0d1117", paper_bgcolor="#0d1117",
             showlegend=False, height=350
@@ -218,11 +234,10 @@ if not df.empty:
         age_dist = age_dist.sort_values("Categoría")
         fig_age = px.bar(
             age_dist, x="Categoría", y="Cantidad",
-            color="Categoría",
-            color_discrete_sequence=["#a371f7", "#58a6ff", "#3fb950", "#d29922", "#f85149"],
             template="plotly_dark",
             title="Distribución por Categoría de Edad"
         )
+        fig_age.update_traces(marker_color="#58a6ff")
         fig_age.update_layout(
             plot_bgcolor="#0d1117", paper_bgcolor="#0d1117",
             showlegend=False, height=350
@@ -274,6 +289,7 @@ with tab1:
 
         with col_b:
             st.markdown(f"**{len(underval)} jugadores encontrados**")
+            st.caption("Score de Oportunidad: RPP alto (45%) + valor bajo (30%) + salario bajo (25%)")
             cols_show = ["long_name", "player_positions", "age", "overall", "rpp", "value_eur", "opportunity_score"]
             cols_show = [c for c in cols_show if c in underval.columns]
             st.dataframe(
@@ -445,10 +461,11 @@ with tab5:
                 hide_index=True, use_container_width=True
             )
 
-        # Gráfico adicional: RPP promedio por edad
+        # Gráfico: RPP promedio por edad
         st.markdown("**RPP promedio según edad**")
-        rpp_by_age = df.groupby("age")["rpp"].mean().reset_index()
-        rpp_by_age.columns = ["Edad", "RPP Promedio"]
+        rpp_by_age = df.groupby("age").agg(rpp_mean=("rpp", "mean"), n=("rpp", "count")).reset_index()
+        rpp_by_age.columns = ["Edad", "RPP Promedio", "n"]
+
         fig_rpp_age = px.line(
             rpp_by_age, x="Edad", y="RPP Promedio",
             template="plotly_dark",
@@ -459,6 +476,27 @@ with tab5:
                               annotation_text="Corte joven (23)", annotation_position="top right")
         fig_rpp_age.add_vline(x=29, line_dash="dot", line_color="#3fb950",
                               annotation_text="Peak (29)", annotation_position="top right")
+
+        # Anotación "n reducido" en el punto de mayor edad
+        max_age_data = rpp_by_age[rpp_by_age["n"] < 5]["Edad"]
+        if not max_age_data.empty:
+            anno_age = int(max_age_data.min())
+        else:
+            anno_age = int(rpp_by_age["Edad"].max())
+        anno_rpp = float(rpp_by_age[rpp_by_age["Edad"] == anno_age]["RPP Promedio"].values[0])
+
+        fig_rpp_age.add_annotation(
+            x=anno_age, y=anno_rpp,
+            text="n reducido",
+            showarrow=True,
+            arrowhead=2,
+            arrowcolor="#f85149",
+            font=dict(color="#f85149", size=11),
+            bgcolor="#1a1a1a",
+            bordercolor="#f85149",
+            ax=40, ay=-30
+        )
+
         fig_rpp_age.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
         st.plotly_chart(fig_rpp_age, use_container_width=True)
 
@@ -527,8 +565,10 @@ if not df.empty:
             df, x="rpp", nbins=40,
             color_discrete_sequence=["#58a6ff"],
             template="plotly_dark",
-            title="Distribución de RPP"
+            title="Distribución de RPP",
+            labels={"rpp": "RPP", "count": "Cantidad"}
         )
+        fig_hist.update_yaxes(title_text="Cantidad")
         fig_hist.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
         st.plotly_chart(fig_hist, use_container_width=True)
 
@@ -537,14 +577,17 @@ if not df.empty:
             df, x="age", nbins=30,
             color_discrete_sequence=["#a371f7"],
             template="plotly_dark",
-            title="Distribución de Edad"
+            title="Distribución de Edad",
+            labels={"age": "Edad", "count": "Cantidad"}
         )
+        fig_hist_age.update_yaxes(title_text="Cantidad")
         fig_hist_age.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
         st.plotly_chart(fig_hist_age, use_container_width=True)
 
     col_v3, col_v4 = st.columns(2)
 
     with col_v3:
+        # Escala logarítmica en eje X para distribuir mejor los puntos
         fig_sc1 = px.scatter(
             df.sample(min(2000, len(df)), random_state=42),
             x="value_eur", y="rpp",
@@ -552,8 +595,9 @@ if not df.empty:
             color="player_positions",
             opacity=0.7,
             template="plotly_dark",
-            labels={"value_eur": "Valor (€)", "rpp": "RPP"},
-            title="Valor de Mercado vs RPP"
+            log_x=True,
+            labels={"value_eur": "Valor (€) — escala log", "rpp": "RPP"},
+            title="Valor de Mercado vs RPP (eje X logarítmico)"
         )
         fig_sc1.update_layout(plot_bgcolor="#0d1117", paper_bgcolor="#0d1117", height=350)
         st.plotly_chart(fig_sc1, use_container_width=True)
@@ -616,6 +660,7 @@ if not df.empty:
 # ─────────────────────────────────────────────
 st.markdown("---")
 st.markdown("<div class='section-title'>📋 Tabla de Jugadores Filtrados</div>", unsafe_allow_html=True)
+st.caption("Oport. Score: combina RPP alto (45%) + valor de mercado bajo (30%) + salario bajo (25%), relativo a la posición del jugador. Escala 0–100.")
 
 if not df.empty:
     sort_col = st.selectbox(
@@ -657,6 +702,7 @@ if not df.empty:
 # ─────────────────────────────────────────────
 st.markdown("---")
 st.markdown("<div class='section-title'>🏅 Ranking de Oportunidades — Top 20 Gangas</div>", unsafe_allow_html=True)
+st.caption("Score de Oportunidad: RPP alto (45%) + valor de mercado bajo (30%) + salario bajo (25%), calculado por percentiles dentro de cada posición. Escala 0–100.")
 
 if not df.empty:
     steal_threshold = df["opportunity_score"].quantile(0.90)
@@ -666,16 +712,19 @@ if not df.empty:
         .head(20)
     )
 
-    steals_sorted = steals.sort_values("opportunity_score")
+    steals_sorted = steals.sort_values("opportunity_score").reset_index(drop=True)
+    n = len(steals_sorted)
+
+    # Color base azul oscuro; top 3 (últimas 3 filas tras sort asc) en dorado
+    bar_colors = ["#1c3a5e"] * n
+    for i in range(max(0, n - 3), n):
+        bar_colors[i] = "#d29922"
+
     fig_rank = go.Figure(go.Bar(
         x=steals_sorted["opportunity_score"],
         y=steals_sorted["long_name"],
         orientation="h",
-        marker=dict(
-            color=steals_sorted["opportunity_score"],
-            colorscale="Viridis",
-            showscale=False
-        ),
+        marker=dict(color=bar_colors),
         customdata=steals_sorted[["player_positions", "age", "overall", "rpp", "value_eur"]].values,
         hovertemplate=(
             "<b>%{y}</b><br>"
@@ -690,10 +739,10 @@ if not df.empty:
     fig_rank.update_layout(
         template="plotly_dark",
         plot_bgcolor="#0d1117", paper_bgcolor="#0d1117",
-        title="💎 Top 20 Jugadores con Mayor Score de Oportunidad",
+        title="💎 Top 20 Jugadores con Mayor Score de Oportunidad  ·  🟡 Top 3 destacados",
         xaxis_title="Score de Oportunidad",
         yaxis_title="Jugador",
-        height=550
+        height=560
     )
     st.plotly_chart(fig_rank, use_container_width=True)
 
@@ -703,7 +752,7 @@ if not df.empty:
     card_cols = st.columns(3)
     for i, (_, row) in enumerate(top3.iterrows()):
         with card_cols[i]:
-            val_m = row["value_eur"] / 1_000_000 if pd.notna(row["value_eur"]) else 0
+            val_fmt = fmt_eur(row["value_eur"])
             age_val = int(row["age"]) if pd.notna(row["age"]) else "?"
             st.markdown(
                 f"""
@@ -714,7 +763,7 @@ if not df.empty:
                     <span style='color:#8b949e;'>Edad: <b style='color:#a371f7;'>{age_val}</b></span><br><br>
                     <span style='color:#8b949e;'>Overall: </span><b>{int(row['overall'])}</b>&nbsp;&nbsp;
                     <span style='color:#8b949e;'>RPP: </span><b>{row['rpp']:.1f}</b><br>
-                    <span style='color:#8b949e;'>Valor: </span><b style='color:#3fb950;'>€{val_m:.1f}M</b><br>
+                    <span style='color:#8b949e;'>Valor: </span><b style='color:#3fb950;'>{val_fmt}</b><br>
                     <span style='color:#8b949e;'>Score: </span><b style='color:#d29922;'>{row['opportunity_score']}</b>
                 </div>
                 """,
@@ -722,4 +771,4 @@ if not df.empty:
             )
 
 st.markdown("---")
-st.caption("FIFA 23 Scout Intelligence · Desarrollado con Streamlit + Plotly · Datos: FIFA 23")
+st.caption("FIFA 23 Scout Intelligence · Desarrollado con Streamlit + Plotly · Fuente de datos: FIFA 23 Complete Player Dataset — Kaggle (sofifa.com)")
