@@ -50,9 +50,19 @@ st.markdown("""
     .badge-efficient{ background: #2d2208; color: #d29922; border: 1px solid #d29922; border-radius: 6px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; }
     .badge-young    { background: #1a1a4a; color: #a371f7; border: 1px solid #a371f7; border-radius: 6px; padding: 2px 8px; font-size: 0.78rem; font-weight: 700; }
     .dataframe { background-color: #161b22 !important; }
-    /* Color de sliders: azul dashboard en lugar de rojo */
-    .stSlider [data-baseweb="slider"] [data-testid="stThumbValue"] { color: #58a6ff !important; }
-    .stSlider [data-baseweb="slider"] > div > div > div { background: #58a6ff !important; }
+    /* Sliders — reemplazar rojo por azul del dashboard en todos los elementos */
+    [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] { background-color: #58a6ff !important; border-color: #58a6ff !important; }
+    [data-testid="stSlider"] [data-baseweb="slider"] div[data-testid="stTickBarMin"],
+    [data-testid="stSlider"] [data-baseweb="slider"] div[data-testid="stTickBarMax"] { color: #58a6ff !important; }
+    /* Números encima y debajo del slider */
+    [data-testid="stSlider"] p,
+    [data-testid="stSlider"] span,
+    [data-testid="stSlider"] div { color: #58a6ff !important; }
+    /* Barra de progreso del slider */
+    [data-testid="stSlider"] [data-baseweb="slider"] > div:nth-child(2) > div { background: #58a6ff !important; }
+    [data-testid="stSlider"] [data-baseweb="slider"] > div > div > div { background: #58a6ff !important; }
+    /* Thumb (circulo) */
+    [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"] { background: #58a6ff !important; box-shadow: 0 0 0 4px rgba(88,166,255,0.2) !important; }
     .stSlider label, .stMultiSelect label, .stSelectbox label { color: #8b949e !important; font-size: 0.82rem !important; }
     hr { border-color: #30363d; }
 </style>
@@ -142,6 +152,7 @@ with st.sidebar:
     min_val = int(df_raw["value_eur"].min())
     max_val = int(df_raw["value_eur"].max())
     val_range = st.slider("Valor de mercado (€)", min_val, max_val, (min_val, max_val), step=500_000, format="€%d")
+    st.caption(f"Desde {fmt_eur(val_range[0])} hasta {fmt_eur(val_range[1])}")
 
     min_rpp = float(df_raw["rpp"].min())
     max_rpp = float(df_raw["rpp"].max())
@@ -684,8 +695,15 @@ if not df.empty:
         .reset_index(drop=True)
     )
 
+    # Formato legible para columnas monetarias
+    df_display_fmt = df_display.copy()
+    if "value_eur" in df_display_fmt.columns:
+        df_display_fmt["value_eur"] = df_display_fmt["value_eur"].apply(fmt_eur)
+    if "wage_eur" in df_display_fmt.columns:
+        df_display_fmt["wage_eur"] = df_display_fmt["wage_eur"].apply(lambda x: fmt_eur(x, 0))
+
     st.dataframe(
-        df_display.rename(columns={
+        df_display_fmt.rename(columns={
             "long_name": "Jugador", "player_positions": "Posición",
             "nationality_name": "País", "age": "Edad", "overall": "OVR",
             "value_eur": "Valor €", "wage_eur": "Salario €/sem",
